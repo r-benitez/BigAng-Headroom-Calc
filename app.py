@@ -7,7 +7,17 @@ from scipy import stats
 st.set_page_config(layout="wide")
 st.title('📈 Performance Headroom Calculator')
 
-st.header("Step 1: Upload Your Data")
+# --- NEW: Vertical and Client Inputs ---
+st.header("Step 1: Campaign Information")
+col_meta1, col_meta2 = st.columns(2)
+with col_meta1:
+    client_name = st.text_input("Client Name", placeholder="e.g., Acme Corp")
+with col_meta2:
+    vertical_name = st.text_input("Vertical", placeholder="e.g., E-commerce, SaaS")
+
+st.write("---")
+
+st.header("Step 2: Upload Your Data")
 uploaded_file = st.file_uploader("Choose a CSV or Excel file", type=['csv', 'xlsx'])
 
 if uploaded_file:
@@ -58,7 +68,7 @@ if uploaded_file:
                 x_vals = np.array(ax.get_xlim())
                 y_vals = intercept + slope * x_vals
                 ax.plot(x_vals, y_vals, '--', color='green', label='Regression Line')
-            ax.set_title('Spend vs. CPA (Red dots are outliers)', fontweight='bold')
+            ax.set_title(f'Spend vs. CPA Analysis: {client_name if client_name else "Unknown Client"}', fontweight='bold')
             ax.set_xlabel('Daily Spend (USD)')
             ax.set_ylabel('Daily CPA (USD)')
             ax.grid(True)
@@ -68,9 +78,9 @@ if uploaded_file:
         st.error(f"An error occurred during analysis: {e}")
 
 st.write("---")
-st.subheader("Step 2: Calculate Spend Goal")
+st.subheader("Step 3: Calculate Spend Goal")
 if 'model' in st.session_state and st.session_state.model:
-    goal_cpa = st.number_input("Enter your client's Goal CPA:", min_value=0.0, format="%.2f")
+    goal_cpa = st.number_input(f"Enter Goal CPA for {client_name if client_name else 'Client'}:", min_value=0.0, format="%.2f")
     if st.button("Calculate Recommended Spend"):
         model = st.session_state.model
         slope, intercept = model.get('slope', 0), model.get('intercept', 0)
@@ -79,9 +89,13 @@ if 'model' in st.session_state and st.session_state.model:
             if recommended_spend < 0:
                 st.warning(f"💡 This Goal CPA is below the model's effective baseline of ~${intercept:,.2f} and is likely unachievable.")
             else:
-                st.success(f"✅ For a Goal CPA of ${goal_cpa:,.2f}, the recommended daily spend is **${recommended_spend:,.2f}**")
+                # Custom result message using the inputs
+                res_msg = f"✅ For **{client_name if client_name else 'the client'}**"
+                if vertical_name:
+                    res_msg += f" in the **{vertical_name}** vertical"
+                
+                st.success(f"{res_msg}: For a Goal CPA of ${goal_cpa:,.2f}, the recommended daily spend is **${recommended_spend:,.2f}**")
         else:
             st.error("The relationship in your data is flat or negative, so spend cannot be predicted from CPA.")
 else:
     st.info("Upload a file to run the analysis and activate the calculator.")
-
