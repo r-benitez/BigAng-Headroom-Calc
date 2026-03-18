@@ -12,9 +12,9 @@ st.title('📈 Performance Headroom Calculator')
 st.header("Step 1: Campaign Information")
 col_m1, col_m2 = st.columns(2)
 with col_m1:
-    client_name = st.text_input("Client Name", placeholder="e.g., Viking River Cruises")
+    client_name = st.text_input("Client Name", placeholder="e.g., State Farm, IHG, etc.")
 with col_m2:
-    vertical_name = st.text_input("Vertical", placeholder="e.g., River Cruises")
+    vertical_name = st.text_input("Vertical", placeholder="e.g., Fin CW, Telecom, etc.")
 
 st.write("---")
 
