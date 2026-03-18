@@ -31,19 +31,26 @@ if uploaded_file:
             df = pd.read_excel(uploaded_file, engine='openpyxl')
         
         # Standardize column search (looking for "Insertion Order")
-        # This handles "Insertion Order", "insertion order", or "Insertion order"
         io_col = next((c for c in df.columns if "insertion order" in c.lower()), None)
         
         if io_col:
             st.subheader("Filter by Insertion Order")
-            io_options = ["ALL IOs"] + sorted(df[io_col].dropna().unique().tolist())
-            selected_io = st.selectbox("Select an Insertion Order to analyze:", options=io_options)
+            unique_ios = sorted(df[io_col].dropna().unique().tolist())
+            io_options = ["ALL IOs"] + unique_ios
             
-            if selected_io != "ALL IOs":
-                df = df[df[io_col] == selected_io].copy()
-                st.info(f"Analysis filtered to: **{selected_io}**")
-            else:
+            # --- UPDATED TO MULTISELECT ---
+            selected_ios = st.multiselect(
+                "Select one or more Insertion Orders to analyze:", 
+                options=io_options,
+                default=["ALL IOs"]
+            )
+            
+            # Logic to handle filtering
+            if not selected_ios or "ALL IOs" in selected_ios:
                 st.info("Analyzing aggregate performance across **ALL Insertion Orders**.")
+            else:
+                df = df[df[io_col].isin(selected_ios)].copy()
+                st.info(f"Analysis filtered to **{len(selected_ios)}** selected IO(s).")
         else:
             st.warning("No 'Insertion Order' column detected. Analyzing full dataset.")
 
@@ -54,14 +61,14 @@ if uploaded_file:
         else:
             # Data Preprocessing
             df['Date'] = pd.to_datetime(df['Date'])
-            # We group by Date to get daily performance regardless of IO splits
+            # Group by Date to get daily performance for the selection
             df_daily = df.groupby('Date').agg({'Revenue (USD)': 'sum', 'Total Conversions': 'sum'}).reset_index()
             
             # Calculate eCPA
             df_daily['eCPA'] = df_daily['Revenue (USD)'] / df_daily['Total Conversions']
             df_daily.replace([np.inf, -np.inf], np.nan, inplace=True)
 
-            # Outlier Detection (Matches Source 15 logic)
+            # Outlier Detection
             q1, q3 = df_daily['eCPA'].quantile(0.25), df_daily['eCPA'].quantile(0.75)
             iqr = q3 - q1
             df_daily['is_outlier'] = (df_daily['eCPA'] < (q1 - 1.5*iqr)) | (df_daily['eCPA'] > (q3 + 1.5*iqr))
@@ -70,24 +77,29 @@ if uploaded_file:
             # Regression Model
             if len(df_cleaned) > 1:
                 slope, intercept, r_val, _, _ = stats.linregress(df_cleaned['Revenue (USD)'], df_cleaned['eCPA'])
-                st.session_state.model = {'slope': slope, 'intercept': intercept}
                 
-                st.subheader("Analysis Results")
-                st.write(f"**Model R-Squared:** `{r_val**2:.4f}`")
+                # Safety Check per your previous requirement
+                r_squared = r_val**2
+                if r_squared < 0.2 or slope < 0:
+                    st.error("⚠️ Analysis Not Possible due to insufficient data or inverse relationship")
+                    st.session_state.model = None
+                else:
+                    st.session_state.model = {'slope': slope, 'intercept': intercept}
+                    st.subheader("Analysis Results")
+                    st.write(f"**Model R-Squared:** `{r_squared:.4f}`")
 
-                # Visualization (Mimics the chart in Source 15)
-                fig, ax = plt.subplots(figsize=(10, 5))
-                ax.scatter(df_daily['Revenue (USD)'], df_daily['eCPA'], c=df_daily['is_outlier'], cmap='coolwarm', alpha=0.5, label='Daily Data Points')
-                
-                # Plot Trendline
-                x_range = np.array(ax.get_xlim())
-                ax.plot(x_range, intercept + slope * x_range, color='red', linestyle='--', label='Regression Trendline')
-                
-                ax.set_title(f"Spend vs CPA Analysis: {client_name if client_name else 'Campaign'}")
-                ax.set_xlabel("Daily Spend (USD)")
-                ax.set_ylabel("CPA (USD)")
-                ax.legend()
-                st.pyplot(fig)
+                    # Visualization
+                    fig, ax = plt.subplots(figsize=(10, 5))
+                    ax.scatter(df_daily['Revenue (USD)'], df_daily['eCPA'], c=df_daily['is_outlier'], cmap='coolwarm', alpha=0.5, label='Daily Data Points')
+                    
+                    x_range = np.array(ax.get_xlim())
+                    ax.plot(x_range, intercept + slope * x_range, color='red', linestyle='--', label='Regression Trendline')
+                    
+                    ax.set_title(f"Spend vs CPA Analysis: {client_name if client_name else 'Campaign'}")
+                    ax.set_xlabel("Daily Spend (USD)")
+                    ax.set_ylabel("CPA (USD)")
+                    ax.legend()
+                    st.pyplot(fig)
             else:
                 st.error("Not enough data points after filtering/outlier removal to run regression.")
 
@@ -98,33 +110,25 @@ if uploaded_file:
 st.write("---")
 st.subheader("Step 3: Spend Goal Calculator")
 
-if 'model' in st.session_state:
+if st.session_state.get('model'):
     col_c1, col_c2 = st.columns(2)
     with col_c1:
-        # Default Goal CPA set to $1,000 per the Viking example 
         goal_cpa = st.number_input("Enter Target Goal CPA ($):", min_value=0.0, value=1000.0, format="%.2f")
     with col_c2:
         forecast_days = st.number_input("Forecast Period (Days):", min_value=1, value=30, step=1)
 
     if st.button("Calculate Recommended Spend"):
         m = st.session_state.model
-        
-        if abs(m['slope']) > 1e-9:
-            daily_spend = (goal_cpa - m['intercept']) / m['slope']
-            total_budget = daily_spend * forecast_days
+        daily_spend = (goal_cpa - m['intercept']) / m['slope']
+        total_budget = daily_spend * forecast_days
 
-            if daily_spend < 0:
-                st.warning(f"💡 Target CPA of ${goal_cpa:,.2f} is likely unachievable with current performance trends.")
-            else:
-                st.success(f"### Results for {client_name if client_name else 'Campaign'}:")
-                
-                res_col1, res_col2 = st.columns(2)
-                res_col1.metric("Recommended Daily Spend", f"${daily_spend:,.2f}")
-                res_col2.metric(f"Total Period Budget (${forecast_days} Days)", f"${total_budget:,.2f}")
-                
-                # Final recommendation sentence similar to Source 4
-                st.info(f"**Recommendation:** To maintain a ${goal_cpa:,.2f} CPA, target a total budget of **${total_budget:,.2f}** over {forecast_days} days.")
+        if daily_spend < 0:
+            st.warning(f"💡 Target CPA of ${goal_cpa:,.2f} is likely unachievable with current performance trends.")
         else:
-            st.error("The relationship in the data is too flat to provide a recommendation.")
+            st.success(f"### Results for {client_name if client_name else 'Campaign'}:")
+            res_col1, res_col2 = st.columns(2)
+            res_col1.metric("Recommended Daily Spend", f"${daily_spend:,.2f}")
+            res_col2.metric(f"Total Period Budget ({forecast_days} Days)", f"${total_budget:,.2f}")
+            st.info(f"**Recommendation:** To maintain a ${goal_cpa:,.2f} CPA, target a total budget of **${total_budget:,.2f}** over {forecast_days} days.")
 else:
-    st.info("Upload data in Step 2 to activate the calculator.")
+    st.info("Upload data and ensure a valid model is generated to activate the calculator.")
