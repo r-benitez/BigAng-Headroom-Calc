@@ -82,4 +82,36 @@ if 'model' in st.session_state and st.session_state.model:
     col_calc1, col_calc2 = st.columns(2)
     
     with col_calc1:
-        goal_c
+        goal_cpa = st.number_input(f"Goal CPA ($):", min_value=0.0, value=50.0, format="%.2f")
+    
+    with col_calc2:
+        num_days = st.number_input("Number of days to calculate for:", min_value=1, value=30, step=1)
+
+    if st.button("Generate Recommendation"):
+        model = st.session_state.model
+        slope, intercept = model.get('slope', 0), model.get('intercept', 0)
+        
+        if slope > 1e-6:
+            daily_spend = (goal_cpa - intercept) / slope
+            
+            if daily_spend < 0:
+                st.warning(f"💡 This Goal CPA is below the model's effective baseline (~${intercept:,.2f}) and is likely unachievable.")
+            else:
+                total_budget = daily_spend * num_days
+                
+                # Metadata display
+                st.markdown(f"### Results for **{client_name if client_name else 'Client'}**")
+                if vertical_name:
+                    st.caption(f"Vertical: {vertical_name}")
+                
+                # Metrics boxes for a professional feel
+                m_col1, m_col2 = st.columns(2)
+                m_col1.metric("Recommended Daily Spend", f"${daily_spend:,.2f}")
+                m_col2.metric(f"Total Budget ({num_days} Days)", f"${total_budget:,.2f}")
+                
+                st.success(f"To maintain a **${goal_cpa:,.2f} CPA**, you should target a daily spend of **${daily_spend:,.2f}**, totaling **${total_budget:,.2f}** over {num_days} days.")
+        else:
+            st.error("The relationship in your data is flat or negative, so spend cannot be predicted from CPA.")
+else:
+    st.info("Please upload data in Step 2 to enable the calculator.")
+    
