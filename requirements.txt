@@ -3,4 +3,5 @@ pandas
 numpy
 matplotlib
 scipy
-python-pptx
+openpyxl
+fpdf2
