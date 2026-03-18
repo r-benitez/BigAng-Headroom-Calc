@@ -82,3 +82,76 @@ if uploaded_file:
         if uploaded_file.name.endswith('.csv'):
             df = pd.read_csv(uploaded_file)
         else:
+            df = pd.read_excel(uploaded_file, engine='openpyxl')
+        
+        required_cols = ['Date', 'Revenue (USD)', 'Total Conversions']
+        if not all(col in df.columns for col in required_cols):
+            st.error(f"Missing required columns: {required_cols}")
+        else:
+            df['Date'] = pd.to_datetime(df['Date'])
+            df_daily = df.groupby('Date').agg({'Revenue (USD)': 'sum', 'Total Conversions': 'sum'}).reset_index()
+            df_daily['eCPA'] = df_daily['Revenue (USD)'] / df_daily['Total Conversions']
+            df_daily.replace([np.inf, -np.inf], np.nan, inplace=True)
+
+            # Outlier Cleaning
+            q1, q3 = df_daily['eCPA'].quantile(0.25), df_daily['eCPA'].quantile(0.75)
+            iqr = q3 - q1
+            df_daily['is_outlier'] = (df_daily['eCPA'] < (q1 - 1.5*iqr)) | (df_daily['eCPA'] > (q3 + 1.5*iqr))
+            df_cleaned = df_daily[~df_daily['is_outlier']].dropna()
+
+            # Regression
+            slope, intercept, r_val, _, _ = stats.linregress(df_cleaned['Revenue (USD)'], df_cleaned['eCPA'])
+            st.session_state.model = {'slope': slope, 'intercept': intercept}
+
+            # Plotting
+            fig, ax = plt.subplots(figsize=(10, 5))
+            ax.scatter(df_daily['Revenue (USD)'], df_daily['eCPA'], c=df_daily['is_outlier'], cmap='coolwarm', alpha=0.5)
+            x_range = np.array(ax.get_xlim())
+            ax.plot(x_range, intercept + slope * x_range, color='red', linestyle='--', label='Trendline')
+            ax.set_title(f"Spend vs CPA Analysis: {client_name}")
+            ax.set_xlabel("Daily Spend (USD)")
+            ax.set_ylabel("CPA (USD)")
+            st.pyplot(fig)
+
+            # Save chart to memory for PDF
+            chart_buf = BytesIO()
+            fig.savefig(chart_buf, format='png', dpi=300, bbox_inches='tight')
+            st.session_state.chart_buf = chart_buf
+
+    except Exception as e:
+        st.error(f"Analysis Error: {e}")
+
+# Step 3: Calculation and PDF Export
+st.write("---")
+st.subheader("Step 3: Spend Goal & PDF Export")
+
+if 'model' in st.session_state:
+    col_c1, col_c2 = st.columns(2)
+    with col_c1:
+        goal_cpa = st.number_input("Enter Goal CPA ($):", min_value=0.0, value=1000.0)
+    with col_c2:
+        forecast_days = st.number_input("Forecast Period (Days):", min_value=1, value=30)
+
+    if st.button("Calculate & Prepare PDF"):
+        m = st.session_state.model
+        daily_spend = (goal_cpa - m['intercept']) / m['slope']
+        total_budget = daily_spend * forecast_days
+
+        if daily_spend < 0:
+            st.warning("Target CPA is likely unachievable based on current data trends.")
+        else:
+            st.success(f"Recommended Daily Spend: ${daily_spend:,.2f} | Total Budget: ${total_budget:,.2f}")
+            
+            # PDF Generation
+            pdf = VikingPDF()
+            pdf.draw_viking_layout(client_name, vertical_name, goal_cpa, daily_spend, total_budget, forecast_days, st.session_state.chart_buf)
+            
+            pdf_output = pdf.output()
+            st.download_button(
+                label="📥 Download Viking-Style PDF Report",
+                data=pdf_output,
+                file_name=f"{client_name}_Headroom_Report.pdf",
+                mime="application/pdf"
+            )
+else:
+    st.info("Please upload data in Step 2 to generate calculations.")
