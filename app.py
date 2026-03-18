@@ -4,25 +4,25 @@ import numpy as np
 import matplotlib.pyplot as plt
 from scipy import stats
 
-st.set_page_config(layout="wide")
+st.set_page_config(layout="wide", page_title="Performance Headroom Calculator")
 st.title('📈 Performance Headroom Calculator')
 
-# --- NEW: Vertical and Client Inputs ---
+# --- Step 1: Campaign Information ---
 st.header("Step 1: Campaign Information")
 col_meta1, col_meta2 = st.columns(2)
 with col_meta1:
-    client_name = st.text_input("Client Name", placeholder="e.g., Acme Corp")
+    client_name = st.text_input("Client Name", placeholder="e.g., IHG, State Farm")
 with col_meta2:
-    vertical_name = st.text_input("Vertical", placeholder="e.g., E-commerce, SaaS")
+    vertical_name = st.text_input("Vertical", placeholder="e.g., Fin CW, Telecom")
 
 st.write("---")
 
+# --- Step 2: Data Upload ---
 st.header("Step 2: Upload Your Data")
 uploaded_file = st.file_uploader("Choose a CSV or Excel file", type=['csv', 'xlsx'])
 
 if uploaded_file:
     try:
-        # Determine the file type and read it into a pandas DataFrame
         if uploaded_file.name.endswith('.csv'):
             df = pd.read_csv(uploaded_file)
         else:
@@ -31,16 +31,14 @@ if uploaded_file:
         st.write("---")
         st.subheader("Analysis Results")
         
-        # --- Analysis Code ---
         required_cols = ['Date', 'Revenue (USD)', 'Total Conversions']
         if not all(col in df.columns for col in required_cols):
-            st.error(f"ERROR: Your file is missing one or more required columns. Please ensure your file contains: {', '.join(required_cols)}")
+            st.error(f"ERROR: Your file is missing required columns: {', '.join(required_cols)}")
         else:
             df_raw = df[required_cols].copy()
             df_raw.loc[:, 'Date'] = pd.to_datetime(df_raw['Date'])
             df_daily = df_raw.groupby('Date').agg({'Revenue (USD)': 'sum', 'Total Conversions': 'sum'}).reset_index()
             
-            # Calculate eCPA and handle division by zero
             df_daily['eCPA'] = df_daily['Revenue (USD)'] / df_daily['Total Conversions']
             df_daily.replace([np.inf, -np.inf], np.nan, inplace=True)
 
@@ -58,11 +56,10 @@ if uploaded_file:
                 x_cleaned, y_cleaned = df_cleaned['Revenue (USD)'], df_cleaned['eCPA']
                 slope, intercept, r_value, _, _ = stats.linregress(x_cleaned, y_cleaned)
                 st.session_state.model = {'slope': slope, 'intercept': intercept}
-                st.write(f"**Model Fit (R-squared):** `{r_value**2:.4f}` (A value closer to 1.0 indicates a better fit)")
-
+                st.write(f"**Model Fit (R-squared):** `{r_value**2:.4f}`")
 
             # Display the analysis graph
-            fig, ax = plt.subplots(figsize=(10, 6))
+            fig, ax = plt.subplots(figsize=(10, 5))
             ax.scatter(df_daily['Revenue (USD)'], df_daily['eCPA'], c=df_daily['is_outlier'], cmap='coolwarm', alpha=0.7)
             if st.session_state.model:
                 x_vals = np.array(ax.get_xlim())
@@ -75,27 +72,14 @@ if uploaded_file:
             st.pyplot(fig)
 
     except Exception as e:
-        st.error(f"An error occurred during analysis: {e}")
+        st.error(f"An error occurred: {e}")
 
+# --- Step 3: Calculation & Budgeting ---
 st.write("---")
-st.subheader("Step 3: Calculate Spend Goal")
+st.subheader("Step 3: Spend & Budget Calculator")
+
 if 'model' in st.session_state and st.session_state.model:
-    goal_cpa = st.number_input(f"Enter Goal CPA for {client_name if client_name else 'Client'}:", min_value=0.0, format="%.2f")
-    if st.button("Calculate Recommended Spend"):
-        model = st.session_state.model
-        slope, intercept = model.get('slope', 0), model.get('intercept', 0)
-        if slope > 1e-6:
-            recommended_spend = (goal_cpa - intercept) / slope
-            if recommended_spend < 0:
-                st.warning(f"💡 This Goal CPA is below the model's effective baseline of ~${intercept:,.2f} and is likely unachievable.")
-            else:
-                # Custom result message using the inputs
-                res_msg = f"✅ For **{client_name if client_name else 'the client'}**"
-                if vertical_name:
-                    res_msg += f" in the **{vertical_name}** vertical"
-                
-                st.success(f"{res_msg}: For a Goal CPA of ${goal_cpa:,.2f}, the recommended daily spend is **${recommended_spend:,.2f}**")
-        else:
-            st.error("The relationship in your data is flat or negative, so spend cannot be predicted from CPA.")
-else:
-    st.info("Upload a file to run the analysis and activate the calculator.")
+    col_calc1, col_calc2 = st.columns(2)
+    
+    with col_calc1:
+        goal_c
