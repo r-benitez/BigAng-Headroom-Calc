@@ -67,25 +67,12 @@ if uploaded_file:
             # Calculate eCPA
             df_daily['eCPA'] = df_daily['Revenue (USD)'] / df_daily['Total Conversions']
             df_daily.replace([np.inf, -np.inf], np.nan, inplace=True)
-            df_daily.dropna(subset=['eCPA', 'Revenue (USD)'], inplace=True)
 
-            # --- MODIFIED Z-SCORE OUTLIER DETECTION ---
-            if len(df_daily) > 0:
-                median_ecpa = df_daily['eCPA'].median()
-                mad = np.median(np.abs(df_daily['eCPA'] - median_ecpa))
-                
-                # Default to false if we can't compute a valid MAD (e.g., all values identical)
-                if mad == 0:
-                    df_daily['is_outlier'] = False
-                else:
-                    # Calculate Modified Z-score for each day
-                    df_daily['mod_z_score'] = 0.6745 * (df_daily['eCPA'] - median_ecpa) / mad
-                    # Flag outliers beyond the standard 3.5 threshold
-                    df_daily['is_outlier'] = df_daily['mod_z_score'].abs() > 3.5
-                
-                df_cleaned = df_daily[~df_daily['is_outlier']].copy()
-            else:
-                df_cleaned = df_daily.copy()
+            # --- REVERTED TO IQR WITH A BOUND OF 2 ---
+            q1, q3 = df_daily['eCPA'].quantile(0.25), df_daily['eCPA'].quantile(0.75)
+            iqr = q3 - q1
+            df_daily['is_outlier'] = (df_daily['eCPA'] < (q1 - 2 * iqr)) | (df_daily['eCPA'] > (q3 + 2 * iqr))
+            df_cleaned = df_daily[~df_daily['is_outlier']].dropna(subset=['eCPA', 'Revenue (USD)'])
 
             # Regression Model
             if len(df_cleaned) > 1:
@@ -103,10 +90,7 @@ if uploaded_file:
 
                     # Visualization
                     fig, ax = plt.subplots(figsize=(10, 5))
-                    
-                    # Colors: Map Outliers clearly in the scatter plot
-                    colors = df_daily['is_outlier'].map({True: 'red', False: 'blue'})
-                    ax.scatter(df_daily['Revenue (USD)'], df_daily['eCPA'], c=colors, alpha=0.5, label='Daily Data Points')
+                    ax.scatter(df_daily['Revenue (USD)'], df_daily['eCPA'], c=df_daily['is_outlier'], cmap='coolwarm', alpha=0.5, label='Daily Data Points')
                     
                     x_range = np.array(ax.get_xlim())
                     ax.plot(x_range, intercept + slope * x_range, color='red', linestyle='--', label='Regression Trendline')
