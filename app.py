@@ -71,7 +71,7 @@ if uploaded_file:
             # Outlier Detection
             q1, q3 = df_daily['eCPA'].quantile(0.25), df_daily['eCPA'].quantile(0.75)
             iqr = q3 - q1
-            df_daily['is_outlier'] = (df_daily['eCPA'] < (q1 - 1.5*iqr)) | (df_daily['eCPA'] > (q3 + 1.5*iqr))
+            df_daily['is_outlier'] = (df_daily['eCPA'] < (q1 - 2*iqr)) | (df_daily['eCPA'] > (q3 + 2*iqr))
             df_cleaned = df_daily[~df_daily['is_outlier']].dropna(subset=['eCPA', 'Revenue (USD)'])
 
             # Regression Model
