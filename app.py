@@ -71,7 +71,7 @@ if uploaded_file:
             # --- IQR WITH A BOUND OF 2 ---
             q1, q3 = df_daily['eCPA'].quantile(0.25), df_daily['eCPA'].quantile(0.75)
             iqr = q3 - q1
-            df_daily['is_outlier'] = (df_daily['eCPA'] < (q1 - 1.5 * iqr)) | (df_daily['eCPA'] > (q3 +  * iqr))
+            df_daily['is_outlier'] = (df_daily['eCPA'] < (q1 - 2 * iqr)) | (df_daily['eCPA'] > (q3 + 2 * iqr))
             df_cleaned = df_daily[~df_daily['is_outlier']].copy()
 
             # --- CALCULATE BOTH REGRESSIONS INDEPENDENTLY ---
@@ -160,7 +160,7 @@ if uploaded_file:
                     st.markdown("#### Mode: Outliers Removed")
                     if model_clean:
                         if model_clean['r_squared'] < 0.2 or model_clean['slope'] < 0:
-                            st.warning("⚠️ Model performance invalid (R² < 0.18 or inverse trend relationship).")
+                            st.warning("⚠️ Model performance invalid (R² < 0.2 or inverse trend relationship).")
                         else:
                             daily_spend_clean = (goal_cpa - model_clean['intercept']) / model_clean['slope']
                             total_budget_clean = daily_spend_clean * forecast_days
