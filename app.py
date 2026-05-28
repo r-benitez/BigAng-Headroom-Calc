@@ -38,7 +38,7 @@ if uploaded_file:
             unique_ios = sorted(df[io_col].dropna().unique().tolist())
             io_options = ["ALL IOs"] + unique_ios
             
-            # --- UPDATED TO MULTISELECT ---
+            # --- MULTISELECT ---
             selected_ios = st.multiselect(
                 "Select one or more Insertion Orders to analyze:", 
                 options=io_options,
@@ -61,74 +61,124 @@ if uploaded_file:
         else:
             # Data Preprocessing
             df['Date'] = pd.to_datetime(df['Date'])
-            # Group by Date to get daily performance for the selection
             df_daily = df.groupby('Date').agg({'Revenue (USD)': 'sum', 'Total Conversions': 'sum'}).reset_index()
             
             # Calculate eCPA
             df_daily['eCPA'] = df_daily['Revenue (USD)'] / df_daily['Total Conversions']
             df_daily.replace([np.inf, -np.inf], np.nan, inplace=True)
+            df_daily.dropna(subset=['eCPA', 'Revenue (USD)'], inplace=True)
 
-            # --- REVERTED TO IQR WITH A BOUND OF 2 ---
+            # --- IQR WITH A BOUND OF 2 ---
             q1, q3 = df_daily['eCPA'].quantile(0.25), df_daily['eCPA'].quantile(0.75)
             iqr = q3 - q1
-            df_daily['is_outlier'] = (df_daily['eCPA'] < (q1 - 2 * iqr)) | (df_daily['eCPA'] > (q3 + 2 * iqr))
-            df_cleaned = df_daily[~df_daily['is_outlier']].dropna(subset=['eCPA', 'Revenue (USD)'])
+            df_daily['is_outlier'] = (df_daily['eCPA'] < (q1 - 1.5 * iqr)) | (df_daily['eCPA'] > (q3 +  * iqr))
+            df_cleaned = df_daily[~df_daily['is_outlier']].copy()
 
-            # Regression Model
+            # --- CALCULATE BOTH REGRESSIONS INDEPENDENTLY ---
+            model_raw = None
+            model_clean = None
+
+            if len(df_daily) > 1:
+                s_raw, i_raw, r_raw, _, _ = stats.linregress(df_daily['Revenue (USD)'], df_daily['eCPA'])
+                model_raw = {'slope': s_raw, 'intercept': i_raw, 'r_squared': r_raw**2}
+
             if len(df_cleaned) > 1:
-                slope, intercept, r_val, _, _ = stats.linregress(df_cleaned['Revenue (USD)'], df_cleaned['eCPA'])
-                
-                # Safety Check per your previous requirement
-                r_squared = r_val**2
-                if r_squared < 0.2 or slope < 0:
-                    st.error("⚠️ Analysis Not Possible due to insufficient data or inverse relationship")
-                    st.session_state.model = None
+                s_clean, i_clean, r_clean, _, _ = stats.linregress(df_cleaned['Revenue (USD)'], df_cleaned['eCPA'])
+                model_clean = {'slope': s_clean, 'intercept': i_clean, 'r_squared': r_clean**2}
+
+            # --- SIDE BY SIDE VISUALIZATION ---
+            st.write("### Data Comparison View")
+            chart_col1, chart_col2 = st.columns(2)
+            
+            # Chart 1: Daily Data (Outliers Included)
+            with chart_col1:
+                fig1, ax1 = plt.subplots(figsize=(8, 4.5))
+                ax1.scatter(df_daily['Revenue (USD)'], df_daily['eCPA'], color='#1f77b4', alpha=0.6, label='All Daily Data')
+                if model_raw:
+                    x_rng1 = np.array(ax1.get_xlim())
+                    ax1.plot(x_rng1, model_raw['intercept'] + model_raw['slope'] * x_rng1, color='#1f77b4', linestyle='-', label='Raw Trendline')
+                    ax1.set_title(f"Daily Data (Outliers Included) | R² = {model_raw['r_squared']:.4f}")
                 else:
-                    st.session_state.model = {'slope': slope, 'intercept': intercept}
-                    st.subheader("Analysis Results")
-                    st.write(f"**Model R-Squared:** `{r_squared:.4f}`")
+                    ax1.set_title("Daily Data (Outliers Included)")
+                ax1.set_xlabel("Daily Spend (USD)")
+                ax1.set_ylabel("CPA (USD)")
+                ax1.legend()
+                st.pyplot(fig1)
 
-                    # Visualization
-                    fig, ax = plt.subplots(figsize=(10, 5))
-                    ax.scatter(df_daily['Revenue (USD)'], df_daily['eCPA'], c=df_daily['is_outlier'], cmap='coolwarm', alpha=0.5, label='Daily Data Points')
-                    
-                    x_range = np.array(ax.get_xlim())
-                    ax.plot(x_range, intercept + slope * x_range, color='red', linestyle='--', label='Regression Trendline')
-                    
-                    ax.set_title(f"Spend vs CPA Analysis: {client_name if client_name else 'Campaign'}")
-                    ax.set_xlabel("Daily Spend (USD)")
-                    ax.set_ylabel("CPA (USD)")
-                    ax.legend()
-                    st.pyplot(fig)
-            else:
-                st.error("Not enough data points after filtering/outlier removal to run regression.")
+            # Chart 2: Daily Data (Outliers Removed)
+            with chart_col2:
+                fig2, ax2 = plt.subplots(figsize=(8, 4.5))
+                ax2.scatter(df_cleaned['Revenue (USD)'], df_cleaned['eCPA'], color='#1f77b4', alpha=0.6, label='Cleaned Daily Data')
+                if model_clean:
+                    x_rng2 = np.array(ax2.get_xlim())
+                    ax2.plot(x_rng2, model_clean['intercept'] + model_clean['slope'] * x_rng2, color='#1f77b4', linestyle='-', label='Cleaned Trendline')
+                    ax2.set_title(f"Daily Data (Outliers Removed) | R² = {model_clean['r_squared']:.4f}")
+                else:
+                    ax2.set_title("Daily Data (Outliers Removed)")
+                ax2.set_xlabel("Daily Spend (USD)")
+                ax2.set_ylabel("CPA (USD)")
+                ax2.legend()
+                st.pyplot(fig2)
 
+            # --- Step 3: Dual Calculation Interface ---
+            st.write("---")
+            st.subheader("Step 3: Spend Goal Calculator")
+
+            col_inputs1, col_inputs2 = st.columns(2)
+            with col_inputs1:
+                goal_cpa = st.number_input("Enter Target Goal CPA ($):", min_value=0.0, value=1000.0, format="%.2f")
+            with col_inputs2:
+                forecast_days = st.number_input("Forecast Period (Days):", min_value=1, value=30, step=1)
+
+            if st.button("Calculate Recommended Spend Across Both Models"):
+                st.write("### 📊 Calculation Comparison")
+                calc_col1, calc_col2 = st.columns(2)
+
+                # --- LEFT COLUMN: OUTLIERS INCLUDED RESULTS ---
+                with calc_col1:
+                    st.markdown("#### Mode: Outliers Included")
+                    if model_raw:
+                        if model_raw['r_squared'] < 0.2 or model_raw['slope'] < 0:
+                            st.warning("⚠️ Model performance invalid (R² < 0.2 or inverse trend relationship).")
+                        else:
+                            daily_spend_raw = (goal_cpa - model_raw['intercept']) / model_raw['slope']
+                            total_budget_raw = daily_spend_raw * forecast_days
+                            
+                            if daily_spend_raw < 0:
+                                st.error(f"💡 Target CPA of ${goal_cpa:,.2f} is modeled as unachievable.")
+                            else:
+                                total_conversions_raw = total_budget_raw / goal_cpa if goal_cpa > 0 else 0.0
+                                
+                                st.metric("Recommended Daily Spend", f"${daily_spend_raw:,.2f}")
+                                st.metric(f"Total Budget ({forecast_days} Days)", f"${total_budget_raw:,.2f}")
+                                st.metric("Total Projected Conversions", f"{total_conversions_raw:,.1f}")
+                    else:
+                        st.error("Insufficient raw data to run metrics.")
+
+                # --- RIGHT COLUMN: OUTLIERS REMOVED RESULTS ---
+                with calc_col2:
+                    st.markdown("#### Mode: Outliers Removed")
+                    if model_clean:
+                        if model_clean['r_squared'] < 0.2 or model_clean['slope'] < 0:
+                            st.warning("⚠️ Model performance invalid (R² < 0.18 or inverse trend relationship).")
+                        else:
+                            daily_spend_clean = (goal_cpa - model_clean['intercept']) / model_clean['slope']
+                            total_budget_clean = daily_spend_clean * forecast_days
+                            
+                            if daily_spend_clean < 0:
+                                st.error(f"💡 Target CPA of ${goal_cpa:,.2f} is modeled as unachievable.")
+                            else:
+                                total_conversions_clean = total_budget_clean / goal_cpa if goal_cpa > 0 else 0.0
+                                
+                                st.metric("Recommended Daily Spend", f"${daily_spend_clean:,.2f}")
+                                st.metric(f"Total Budget ({forecast_days} Days)", f"${total_budget_clean:,.2f}")
+                                st.metric("Total Projected Conversions", f"{total_conversions_clean:,.1f}")
+                    else:
+                        st.error("Insufficient cleaned data to run metrics.")
+                        
     except Exception as e:
         st.error(f"Analysis Error: {e}")
-
-# Step 3: Calculation
-st.write("---")
-st.subheader("Step 3: Spend Goal Calculator")
-
-if st.session_state.get('model'):
-    col_c1, col_c2 = st.columns(2)
-    with col_c1:
-        goal_cpa = st.number_input("Enter Target Goal CPA ($):", min_value=0.0, value=1000.0, format="%.2f")
-    with col_c2:
-        forecast_days = st.number_input("Forecast Period (Days):", min_value=1, value=30, step=1)
-
-    if st.button("Calculate Recommended Spend"):
-        m = st.session_state.model
-        daily_spend = (goal_cpa - m['intercept']) / m['slope']
-        total_budget = daily_spend * forecast_days
-
-        if daily_spend < 0:
-            st.warning(f"💡 Target CPA of ${goal_cpa:,.2f} is likely unachievable with current performance trends.")
-        else:
-            st.success(f"### Results for {client_name if client_name else 'Campaign'}:")
-            res_col1, res_col2 = st.columns(2)
-            res_col1.metric("Recommended Daily Spend", f"${daily_spend:,.2f}")
-            res_col2.metric(f"Total Period Budget ({forecast_days} Days)", f"${total_budget:,.2f}")
-            st.info(f"**Recommendation:** To maintain a ${goal_cpa:,.2f} CPA, target a total budget of **${total_budget:,.2f}** over {forecast_days} days.")
 else:
-    st.info("Upload data and ensure a valid model is generated to activate the calculator.")
+    st.write("---")
+    st.subheader("Step 3: Spend Goal Calculator")
+    st.info("Upload data and ensure models are generated to activate the calculator.")
