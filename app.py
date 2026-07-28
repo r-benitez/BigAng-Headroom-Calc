@@ -151,9 +151,12 @@ if uploaded_file:
                                 
                                 # Calculations
                                 incremental_spend_raw = daily_spend_raw - avg_daily_spend_raw
-                                forecasted_daily_conversions_raw = daily_spend_raw / goal_cpa if goal_cpa > 0 else 0.0
-                                incremental_conversions_raw = forecasted_daily_conversions_raw - avg_daily_conversions_raw
-                                total_conversions_raw = forecasted_daily_conversions_raw * forecast_days
+                                
+                                # Incremental conversions = Incremental daily spend / CPA Goal
+                                incremental_conversions_raw = incremental_spend_raw / goal_cpa if goal_cpa > 0 else 0.0
+                                
+                                # Total Conversions = (Average daily conversions + Incremental daily conversions) * Forecast Period
+                                total_conversions_raw = (avg_daily_conversions_raw + incremental_conversions_raw) * forecast_days
                                 
                                 # Streamlit Metrics
                                 st.metric("Reco daily spend", f"${daily_spend_raw:,.2f}")
@@ -189,9 +192,12 @@ if uploaded_file:
                                 
                                 # Calculations
                                 incremental_spend_clean = daily_spend_clean - avg_daily_spend_clean
-                                forecasted_daily_conversions_clean = daily_spend_clean / goal_cpa if goal_cpa > 0 else 0.0
-                                incremental_conversions_clean = forecasted_daily_conversions_clean - avg_daily_conversions_clean
-                                total_conversions_clean = forecasted_daily_conversions_clean * forecast_days
+                                
+                                # Incremental conversions = Incremental daily spend / CPA Goal
+                                incremental_conversions_clean = incremental_spend_clean / goal_cpa if goal_cpa > 0 else 0.0
+                                
+                                # Total Conversions = (Average daily conversions + Incremental daily conversions) * Forecast Period
+                                total_conversions_clean = (avg_daily_conversions_clean + incremental_conversions_clean) * forecast_days
                                 
                                 # Streamlit Metrics
                                 st.metric("Reco daily spend", f"${daily_spend_clean:,.2f}")
