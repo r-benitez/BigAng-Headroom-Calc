@@ -77,11 +77,9 @@ if uploaded_file:
             # --- CALCULATE BOTH REGRESSIONS INDEPENDENTLY ---
             model_raw = None
             model_clean = None
-
             if len(df_daily) > 1:
                 s_raw, i_raw, r_raw, _, _ = stats.linregress(df_daily['Revenue (USD)'], df_daily['eCPA'])
                 model_raw = {'slope': s_raw, 'intercept': i_raw, 'r_squared': r_raw**2}
-
             if len(df_cleaned) > 1:
                 s_clean, i_clean, r_clean, _, _ = stats.linregress(df_cleaned['Revenue (USD)'], df_cleaned['eCPA'])
                 model_clean = {'slope': s_clean, 'intercept': i_clean, 'r_squared': r_clean**2}
@@ -123,7 +121,6 @@ if uploaded_file:
             # --- Step 3: Dual Calculation Interface ---
             st.write("---")
             st.subheader("Step 3: Spend Goal Calculator")
-
             col_inputs1, col_inputs2 = st.columns(2)
             with col_inputs1:
                 goal_cpa = st.number_input("Enter Target Goal CPA ($):", min_value=0.0, value=1000.0, format="%.2f")
@@ -138,8 +135,8 @@ if uploaded_file:
                 with calc_col1:
                     st.markdown("#### Mode: Outliers Included")
                     if model_raw:
-                        if model_raw['r_squared'] < 0.2 or model_raw['slope'] < 0:
-                            st.warning("⚠️ Model performance invalid (R² < 0.2 or inverse trend relationship).")
+                        if model_raw['r_squared'] < 0.15 or model_raw['slope'] < 0:
+                            st.warning("⚠️ Model performance invalid (R² < 0.15 or inverse trend relationship).")
                         else:
                             daily_spend_raw = (goal_cpa - model_raw['intercept']) / model_raw['slope']
                             total_budget_raw = daily_spend_raw * forecast_days
@@ -149,9 +146,37 @@ if uploaded_file:
                             else:
                                 total_conversions_raw = total_budget_raw / goal_cpa if goal_cpa > 0 else 0.0
                                 
+                                # Dynamic Baselines based on exact days uploaded
+                                uploaded_days_raw = len(df_daily)
+                                avg_daily_spend_raw = df_daily['Revenue (USD)'].mean()
+                                avg_daily_conversions_raw = df_daily['Total Conversions'].mean()
+                                
+                                # Scale Baselines to target forecast period
+                                baseline_spend_forecast_raw = avg_daily_spend_raw * forecast_days
+                                baseline_conversions_forecast_raw = avg_daily_conversions_raw * forecast_days
+                                
+                                # Headroom (Recommended - Baseline Baseline)
+                                headroom_spend_raw = total_budget_raw - baseline_spend_forecast_raw
+                                headroom_conversions_raw = total_conversions_raw - baseline_conversions_forecast_raw
+                                
                                 st.metric("Recommended Daily Spend", f"${daily_spend_raw:,.2f}")
-                                st.metric(f"Total Budget ({forecast_days} Days)", f"${total_budget_raw:,.2f}")
-                                st.metric("Total Projected Conversions", f"{total_conversions_raw:,.1f}")
+                                st.metric(
+                                    f"Total Budget ({forecast_days} Days)", 
+                                    f"${total_budget_raw:,.2f}",
+                                    delta=f"${headroom_spend_raw:,.2f} Headroom"
+                                )
+                                st.metric(
+                                    "Total Projected Conversions", 
+                                    f"{total_conversions_raw:,.1f}",
+                                    delta=f"{headroom_conversions_raw:,.1f} Headroom"
+                                )
+                                
+                                st.markdown("---")
+                                st.markdown(f"**Baseline Baseline ({uploaded_days_raw} Days Uploaded):**")
+                                st.write(f"- Avg Daily Spend: `${avg_daily_spend_raw:,.2f}`")
+                                st.write(f"- Avg Daily Conversions: `{avg_daily_conversions_raw:,.1f}`")
+                                st.write(f"- Baseline Expected Spend over {forecast_days} days: `${baseline_spend_forecast_raw:,.2f}`")
+                                st.write(f"- Baseline Expected Conversions over {forecast_days} days: `{baseline_conversions_forecast_raw:,.1f}`")
                     else:
                         st.error("Insufficient raw data to run metrics.")
 
@@ -159,8 +184,8 @@ if uploaded_file:
                 with calc_col2:
                     st.markdown("#### Mode: Outliers Removed")
                     if model_clean:
-                        if model_clean['r_squared'] < 0.2 or model_clean['slope'] < 0:
-                            st.warning("⚠️ Model performance invalid (R² < 0.2 or inverse trend relationship).")
+                        if model_clean['r_squared'] < 0.15 or model_clean['slope'] < 0:
+                            st.warning("⚠️ Model performance invalid (R² < 0.15 or inverse trend relationship).")
                         else:
                             daily_spend_clean = (goal_cpa - model_clean['intercept']) / model_clean['slope']
                             total_budget_clean = daily_spend_clean * forecast_days
@@ -170,9 +195,37 @@ if uploaded_file:
                             else:
                                 total_conversions_clean = total_budget_clean / goal_cpa if goal_cpa > 0 else 0.0
                                 
+                                # Dynamic Baselines based on exact days uploaded
+                                uploaded_days_clean = len(df_cleaned)
+                                avg_daily_spend_clean = df_cleaned['Revenue (USD)'].mean()
+                                avg_daily_conversions_clean = df_cleaned['Total Conversions'].mean()
+                                
+                                # Scale Baselines to target forecast period
+                                baseline_spend_forecast_clean = avg_daily_spend_clean * forecast_days
+                                baseline_conversions_forecast_clean = avg_daily_conversions_clean * forecast_days
+                                
+                                # Headroom (Recommended - Baseline Baseline)
+                                headroom_spend_clean = total_budget_clean - baseline_spend_forecast_clean
+                                headroom_conversions_clean = total_conversions_clean - baseline_conversions_forecast_clean
+                                
                                 st.metric("Recommended Daily Spend", f"${daily_spend_clean:,.2f}")
-                                st.metric(f"Total Budget ({forecast_days} Days)", f"${total_budget_clean:,.2f}")
-                                st.metric("Total Projected Conversions", f"{total_conversions_clean:,.1f}")
+                                st.metric(
+                                    f"Total Budget ({forecast_days} Days)", 
+                                    f"${total_budget_clean:,.2f}",
+                                    delta=f"${headroom_spend_clean:,.2f} Headroom"
+                                )
+                                st.metric(
+                                    "Total Projected Conversions", 
+                                    f"{total_conversions_clean:,.1f}",
+                                    delta=f"{headroom_conversions_clean:,.1f} Headroom"
+                                )
+                                
+                                st.markdown("---")
+                                st.markdown(f"**Baseline Baseline ({uploaded_days_clean} Days Uploaded):**")
+                                st.write(f"- Avg Daily Spend: `${avg_daily_spend_clean:,.2f}`")
+                                st.write(f"- Avg Daily Conversions: `{avg_daily_conversions_clean:,.1f}`")
+                                st.write(f"- Baseline Expected Spend over {forecast_days} days: `${baseline_spend_forecast_clean:,.2f}`")
+                                st.write(f"- Baseline Expected Conversions over {forecast_days} days: `{baseline_conversions_forecast_clean:,.1f}`")
                     else:
                         st.error("Insufficient cleaned data to run metrics.")
                         
