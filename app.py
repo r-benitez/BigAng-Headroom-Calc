@@ -77,9 +77,11 @@ if uploaded_file:
             # --- CALCULATE BOTH REGRESSIONS INDEPENDENTLY ---
             model_raw = None
             model_clean = None
+
             if len(df_daily) > 1:
                 s_raw, i_raw, r_raw, _, _ = stats.linregress(df_daily['Revenue (USD)'], df_daily['eCPA'])
                 model_raw = {'slope': s_raw, 'intercept': i_raw, 'r_squared': r_raw**2}
+
             if len(df_cleaned) > 1:
                 s_clean, i_clean, r_clean, _, _ = stats.linregress(df_cleaned['Revenue (USD)'], df_cleaned['eCPA'])
                 model_clean = {'slope': s_clean, 'intercept': i_clean, 'r_squared': r_clean**2}
@@ -121,6 +123,7 @@ if uploaded_file:
             # --- Step 3: Dual Calculation Interface ---
             st.write("---")
             st.subheader("Step 3: Spend Goal Calculator")
+            
             col_inputs1, col_inputs2 = st.columns(2)
             with col_inputs1:
                 goal_cpa = st.number_input("Enter Target Goal CPA ($):", min_value=0.0, value=1000.0, format="%.2f")
@@ -152,7 +155,7 @@ if uploaded_file:
                                 # Calculations
                                 incremental_spend_raw = daily_spend_raw - avg_daily_spend_raw
                                 
-                                # Incremental conversions = Incremental daily spend / CPA Goal
+                                # Incremental daily conversions = Incremental daily spend / CPA Goal
                                 incremental_conversions_raw = incremental_spend_raw / goal_cpa if goal_cpa > 0 else 0.0
                                 
                                 # Total Conversions = (Average daily conversions + Incremental daily conversions) * Forecast Period
@@ -163,7 +166,7 @@ if uploaded_file:
                                 st.metric("Incremental spend", f"${incremental_spend_raw:,.2f}")
                                 st.metric(f"Total Forecast Spend ({forecast_days} Days)", f"${total_budget_raw:,.2f}")
                                 st.metric("Total Conversions", f"{total_conversions_raw:,.1f}")
-                                st.metric("Incremental conversions", f"{incremental_conversions_raw:,.1f}")
+                                st.metric("Incremental daily conversions", f"{incremental_conversions_raw:,.1f}")
                                 
                                 st.markdown("---")
                                 st.markdown(f"**Baseline Run Rate ({uploaded_days_raw} Days Uploaded):**")
@@ -193,7 +196,7 @@ if uploaded_file:
                                 # Calculations
                                 incremental_spend_clean = daily_spend_clean - avg_daily_spend_clean
                                 
-                                # Incremental conversions = Incremental daily spend / CPA Goal
+                                # Incremental daily conversions = Incremental daily spend / CPA Goal
                                 incremental_conversions_clean = incremental_spend_clean / goal_cpa if goal_cpa > 0 else 0.0
                                 
                                 # Total Conversions = (Average daily conversions + Incremental daily conversions) * Forecast Period
@@ -204,7 +207,7 @@ if uploaded_file:
                                 st.metric("Incremental spend", f"${incremental_spend_clean:,.2f}")
                                 st.metric(f"Total Forecast Spend ({forecast_days} Days)", f"${total_budget_clean:,.2f}")
                                 st.metric("Total Conversions", f"{total_conversions_clean:,.1f}")
-                                st.metric("Incremental conversions", f"{incremental_conversions_clean:,.1f}")
+                                st.metric("Incremental daily conversions", f"{incremental_conversions_clean:,.1f}")
                                 
                                 st.markdown("---")
                                 st.markdown(f"**Baseline Run Rate ({uploaded_days_clean} Days Uploaded):**")
